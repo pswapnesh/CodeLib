@@ -1,7 +1,9 @@
 import tensorflow as tf
 from skimage.io import imread,imsave
 from sklearn.model_selection import train_test_split
-
+import matplotlib.pyplot as plt
+from IPython import display
+import numpy as np
 
 ## General utilities
 def plotter(images,cmap = 'jet',size = (15,15)):
@@ -27,13 +29,16 @@ class DataLoader():
         self.x_list = x_list
         self.y_list = y_list            
         self.test_size = test_size
+        self.preprocess_x = preprocess_x
+        self.preprocess_y = preprocess_y
         print("length of x,y: ", len(x_list),',',len(x_list))
         
         try:
             xx = imread(self.x_list[0])
-            self.rows,self.columns,self.channels = xx.shape
+            self.rows,self.cols,self.channels = xx.shape
             yy = imread(self.y_list[0])
             _,_,self.classes = yy.shape
+            print(xx.shape,yy.shape)
 
         except:
             print('check data format first.. ')
@@ -46,11 +51,11 @@ class DataLoader():
     
     def train_generator(self):
         """ generator that generates one train record of X and y randomly from the file lists"""
-        ii = np.random.randint()
+        ii = np.random.randint(len(self.X_train))
         xx = imread(self.X_train[ii])
         yy = imread(self.y_train[ii])
-        xx = preprocess_x(xx)
-        yy = preprocess_y(yy)
+        xx = self.preprocess_x(xx)
+        yy = self.preprocess_y(yy)
         yield xx,yy
 
     def test_generator(self):
@@ -58,12 +63,12 @@ class DataLoader():
         ii = np.random.randint()
         xx = imread(self.X_test[ii])
         yy = imread(self.y_test[ii])
-        xx = preprocess_x(xx)
-        yy = preprocess_y(yy)
+        xx = self.preprocess_x(xx)
+        yy = self.preprocess_y(yy)
         yield xx,yy
 
     def get_tf_dataset(self,dset = 'train' ,BATCH_SIZE=16):
-        if dset == 'train'
+        if dset == 'train':
             dataset = tf.data.Dataset.from_generator(self.train_generator,
                                                     (tf.float32, tf.float32),
                                                     ((self.rows,self.cols,self.channels), (self.rows,self.cols,self.classes)))
@@ -76,17 +81,24 @@ class DataLoader():
         return train_dataset
 
     def show(self):
-        for t in self.train_dataset.take(1):
+        for t in self.training_dataset.take(1):
             plotter([t[0][0,:,:,0],t[1][0,:,:,0]],'gray')
+
+            
+class DisplayCallback(tf.keras.callbacks.Callback):
+    def __init__(self,dl):
+        self.dl =dl
     
-    def display_callback(self,model):
-        t = self.test_dataset.take(1)        
-        xx,yy = t[0][0:1,:,:,:],t[1][0:1,:,:,:]
-        yp = model.predict(xx)
-        plt.clf()
-        fig, ax = plt.subplots(1,3)
-        ax[0].imshow(xx[0,:,:,0])        
-        ax[1].imshow(yy[0,:,:,0])            
-        ax[2].imshow(yp[0,:,:,0])            
-        plt.show()
+    def on_epoch_begin(self, epoch, logs=None):
+        display.clear_output(wait=True)
+        for t in self.dl.training_dataset.take(1):
+            xx,yy = t[0][0:1,:,:,:],t[1][0:1,:,:,:]
+            yp = self.model.predict(xx)
+            plt.clf()
+            fig, ax = plt.subplots(1,3)
+            ax[0].imshow(xx[0,:,:,0])        
+            ax[1].imshow(yy[0,:,:,0])            
+            ax[2].imshow(yp[0,:,:,0])   
+            plt.axis('off')
+            plt.show()
         
