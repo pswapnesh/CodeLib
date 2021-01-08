@@ -51,7 +51,7 @@ class DataLoader():
         yy = imread(self.y_train[ii])
         xx = preprocess_x(xx)
         yy = preprocess_y(yy)
-        return xx,yy
+        yield xx,yy
 
     def test_generator(self):
         """ generator that generates one test record of X and y randomly from the file lists"""
@@ -60,7 +60,7 @@ class DataLoader():
         yy = imread(self.y_test[ii])
         xx = preprocess_x(xx)
         yy = preprocess_y(yy)
-        return xx,yy
+        yield xx,yy
 
     def get_tf_dataset(self,dset = 'train' ,BATCH_SIZE=16):
         if dset == 'train'
@@ -79,3 +79,14 @@ class DataLoader():
         for t in self.train_dataset.take(1):
             plotter([t[0][0,:,:,0],t[1][0,:,:,0]],'gray')
     
+    def display_callback(self,model):
+        t = self.test_dataset.take(1)        
+        xx,yy = t[0][0:1,:,:,:],t[1][0:1,:,:,:]
+        yp = model.predict(xx)
+        plt.clf()
+        fig, ax = plt.subplots(1,3)
+        ax[0].imshow(xx[0,:,:,0])        
+        ax[1].imshow(yy[0,:,:,0])            
+        ax[2].imshow(yp[0,:,:,0])            
+        plt.show()
+        
