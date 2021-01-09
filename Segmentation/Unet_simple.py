@@ -38,7 +38,7 @@ print(tf.__version__)
 
 class UNET():
 
-    def __init__(self,img_size = 256, channels = 1,nclasses = 4,cnet = [8,16,32], fname = 'unet_model.h5'):
+    def __init__(self,img_size = 256, channels = 1,nclasses = 4,cnet = [16,32,64,128], fname = 'unet_model.h5'):
 
         self.img_rows = img_size
         self.img_cols = img_size
