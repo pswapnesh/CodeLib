@@ -43,7 +43,7 @@ class DataLoader():
         except:
             print('check data format first.. ')
 
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.x_list, self.x_list, test_size=self.test_size, random_state=seed)
+        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.x_list, self.y_list, test_size=self.test_size, random_state=seed)
 
         self.training_dataset = self.get_tf_dataset('train')    
         self.test_dataset = self.get_tf_dataset('test')    
