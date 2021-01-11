@@ -64,11 +64,13 @@ class UNET():
         if not first:
             c1 = MaxPooling2D((pool_ker, pool_ker)) (c1)
           
-        c1 = Conv2D(n, (conv_ker, conv_ker), activation='relu', padding='same') (c1)
+        c1 = Conv2D(n, (conv_ker, conv_ker), padding='same', use_bias=False) (c1)
         c1 = BatchNormalization()(c1)
+        c1 = Activation('relu')(c1)
         c1 = Dropout(self.d_out) (c1)
-        c1 = Conv2D(n, (conv_ker, conv_ker), activation='relu', padding='same') (c1)
+        c1 = Conv2D(n, (conv_ker, conv_ker), padding='same', use_bias=False) (c1)
         c1 = BatchNormalization()(c1)
+        c1 = Activation('relu')(c1)
         return c1
       
     def up_net(self,n,c4,c6):
@@ -77,12 +79,14 @@ class UNET():
         
         u6 = UpSampling2D(size = (pool_ker, pool_ker)) (c6)        
         u6 = concatenate([u6, c4],axis = 3)
-        c6 = Conv2D(n, (conv_ker, conv_ker), activation='relu', padding='same', kernel_initializer='he_normal') (u6)
+        c6 = Conv2D(n, (conv_ker, conv_ker), use_bias=False, padding='same', kernel_initializer='he_normal') (u6)
         c6 = BatchNormalization()(c6)
+        c6 = Activation('relu')(c6)
         c6 = Dropout(self.d_out) (c6)
-        c6 = Conv2D(n, (conv_ker, conv_ker), activation='relu', padding='same', kernel_initializer='he_normal') (c6)
+        c6 = Conv2D(n, (conv_ker, conv_ker), use_bias=False, padding='same', kernel_initializer='he_normal') (c6)
         c6 = BatchNormalization()(c6)
-        return c6  
+        c6 = Activation('relu')(c6)
+        return c6 
        
 
     def get_unet(self):
