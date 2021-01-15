@@ -78,7 +78,7 @@ class UNET():
 
         return c   
     
-    def get_unet(self,optimizer = 'Adam',loss = 'binary_crossentropy',metrics = ['mse']):
+    def get_unet(self):
         # get skip connection layers and its sizes
         skip_layers = []
         for skip_connection in self.skips:
@@ -96,6 +96,9 @@ class UNET():
         outputs = tf.keras.layers.Conv2D(self.n_classes, 1, activation='sigmoid', kernel_initializer='he_normal',padding='same',name = 'out')(x)
 
         unet_model = tf.keras.models.Model(inputs = self.encoder_model.input,outputs = outputs)
+        optimizer = 'Adam'
+        loss = 'binary_crossentropy'
+        metrics = ['mse']
         unet_model.compile(optimizer=optimizer,loss=loss,metrics=metrics)
         return unet_model
     
