@@ -65,8 +65,9 @@ class UNET():
 
 
     def up_net(self,n,c,skip):
-        c = tf.keras.layers.UpSampling2D( (self.pool_ker, self.pool_ker) )(c)        
-        c = tf.keras.layers.Concatenate()([c, skip])
+        c = tf.keras.layers.UpSampling2D( (self.pool_ker, self.pool_ker) )(c)  
+        if skip!= None:         
+            c = tf.keras.layers.Concatenate()([c, skip])
 
         c = tf.keras.layers.Conv2D(n, (self.conv_ker, self.conv_ker), padding='same')(c)
         c = tf.keras.layers.BatchNormalization()(c)
@@ -87,12 +88,14 @@ class UNET():
             skip_layers.append(self.encoder_model.layers[skip_connection[1]])
 
         # make n filters
-        filters = 1.0*np.arange(len(skip_layers)-1)*self.filter_start    
-
+        filters = 1.0*np.arange(len(skip_layers))*self.filter_start    
+        filters=filters[::-1]
 
         x = skip_layers[0].output
         for ii in range(1,len(skip_layers)):
             x = self.up_net(filters[ii-1],x,skip_layers[ii].output)
+        
+        x = self.up_net(filters[ii-1],x,None)
 
         
         outputs = tf.keras.layers.Conv2D(self.n_classes, 1, activation='sigmoid', kernel_initializer='he_normal',padding='same',name = 'out')(x)
