@@ -5,6 +5,7 @@ from tensorflow.keras.preprocessing import image
 from tensorflow.keras.applications.resnet50 import preprocess_input
 
 from Unet_from_encoder import *
+import Losses as losses
 
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
@@ -17,3 +18,4 @@ for l in encoder_model.layers:
 
 unet = UNET(128,3,encoder_model,filter_start=16)
 encoder_model = []
+unet.model.compile(optimizer='Adam',loss=losses.bce_and_jac,metrics=['binary_crossenropy',losses.dice_coef])

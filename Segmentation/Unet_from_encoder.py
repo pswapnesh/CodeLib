@@ -98,7 +98,7 @@ class UNET():
         x = self.up_net(filters[ii-1],x,None)
 
         
-        outputs = tf.keras.layers.Conv2D(self.n_classes, 1, activation='sigmoid', kernel_initializer='he_normal',padding='same',name = 'out')(x)
+        outputs = tf.keras.layers.Conv2D(self.n_classes, 1, activation='sigmoid',padding='same',name = 'out')(x)
 
         unet_model = tf.keras.models.Model(inputs = self.encoder_model.input,outputs = outputs)
         optimizer = 'Adam'
