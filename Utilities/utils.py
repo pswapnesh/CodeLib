@@ -10,138 +10,63 @@ def getPatch(im,sz):
     cc = np.random.randint(sc-sz)
     return im[rr:rr+sz,cc:cc+sz],rr,cc
 
-from skimage.util import view_as_windows,pad
-def get_padding(im,size = 256,stride = 256):
-    sr,sc = im.shape[0],im.shape[1]    
-    pad_r = stride-((sr-size)%stride)
-    pad_c = stride-((sc-size)%stride)
-    
-    if (sr-size)%stride ==0:
-        pad_r=0
-    if (sc-size)%stride ==0:
-        pad_c=0
-    return int(pad_r),int(pad_c)
+def extract_tiles(im,size = 256,exclude = 16):
 
-def extract_tiles(im,size=256,padding=16):     
-    
-    stride = size - 2*padding    
     if len(im.shape)<3:
         im = im[:,:,np.newaxis]
-    sr,sc,ch = im.shape    
+    sr,sc,ch = im.shape 
     
-    pad_r,pad_c = get_padding(im,size,stride)
+    pad_row = 0 if sr%size == 0 else (int(sr/size)+1) * size - sr
+    pad_col = 0 if sc%size == 0 else (int(sc/size)+1) * size - sc
+    im1 = np.pad(im,((0,pad_row),(0,pad_col),(0,0)),mode = 'reflect')
+    sr1,sc2,_ = im1.shape
     
-    im = pad(im,((0,pad_r),(0,pad_c),(0,0)),'reflect')
-    patches = view_as_windows(im,(size,size,ch),stride)    
-    patches = patches[:,:,0,:]
-    
-    sh = list(patches.shape)
-    sh[1] = sh[0]*sh[1]
-    sh = np.delete(sh,0)
-    patches = np.reshape(patches,tuple(sh))
-    
-    R = np.arange(im.shape[0])
-    rv = view_as_windows(R,size,stride) 
+    rv = view_as_windows(np.arange(0,im1.shape[0]),size,size)
+    cv = view_as_windows(np.arange(0,im1.shape[1]),size,size)
     rv = rv[:,0]
-    
-    C = np.arange(im.shape[1])
-    cv = view_as_windows(C,size,stride) 
     cv = cv[:,0]
     cc,rr = np.meshgrid(cv,rv)
     positions = np.concatenate((rr.ravel()[:,np.newaxis],cc.ravel()[:,np.newaxis]),axis = 1)
-    
+        
+    im1 = np.pad(im1,((exclude,exclude),(exclude,exclude),(0,0)),mode = 'reflect')
+#     rv = view_as_windows(np.arange(0,im1.shape[0]),size+2*d,size)
+#     cv = view_as_windows(np.arange(0,im1.shape[1]),size+2*d,size)
+#     rv = rv[:,0]
+#     cv = cv[:,0]
+#     cc,rr = np.meshgrid(cv,rv)
+#     positions = np.concatenate((rr.ravel()[:,np.newaxis],cc.ravel()[:,np.newaxis]),axis = 1)
     params = {}
-    params['padding'] = padding
-    params['pad_r'] = pad_r
-    params['pad_c'] = pad_c
-    params['im_size'] = im.shape[:2]
+    params['size'] = size
+    params['exclude'] = exclude
+    params['pad_row'] = pad_row
+    params['pad_col'] = pad_col
+    params['im_size'] = [sr1,sc2]
     params['positions'] = positions
     
+    patches = view_as_windows(im1,(size+2*d,size+2*d,ch),size)    
+    patches = patches[:,:,0,:,:,:]
+    patches = np.reshape(patches,(-1,patches.shape[2],patches.shape[3],patches.shape[4]))
     return patches,params
 
+
 def stitch_tiles(patches,params):
-    padding = params['padding']
-    pad_r = params['pad_r']
-    pad_c = params['pad_c']
+    size = params['size']
+    pad_row = params['pad_row']
+    pad_col = params['pad_col']
     im_size = params['im_size']
     positions = params['positions']
-    size = patches.shape[1]
+    exclude = params['exclude']
+        
     
-    result = np.zeros((im_size[0],im_size[1],patches.shape[-1]))
+    result = np.zeros((im_size[0],im_size[1],patches.shape[-1]))*1.0
     
-    for i,pos in enumerate(positions):
+    
+    for i,pos in enumerate(positions):        
         rr,cc = pos[0],pos[1]    
-        result[rr:rr+size,cc:cc+size,:] += pad(patches[i,padding:-padding,padding:-padding,:],((padding,padding),(padding,padding),(0,0)),'constant')
-    if pad_r>0:
-        result = result[:-pad_r,:]
-    if pad_c>0:
-        result = result[:,:-pad_c]
+        result[rr:rr+size,cc:cc+size,:] = patches[i,exclude:-exclude,exclude:-exclude,:]*1.0
+    
+    if pad_row>0:
+        result = result[:-pad_row,:]
+    if pad_col>0:
+        result = result[:,:-pad_col]
     return result
-
-# from skimage.util import view_as_windows,pad
-# def get_padding(im,size = 256,stride = 256):
-#     sr,sc = im.shape[0],im.shape[1]    
-#     pad_r = size-((sr-size)%stride)
-#     pad_c = size-((sc-size)%stride)
-#     if (sr-size)%stride ==0:
-#         pad_r=0
-#     if (sc-size)%stride ==0:
-#         pad_c=0
-#     return int(pad_r),int(pad_c)
-
-# def extract_tiles(im,size=256,stride=256):    
-#     if len(im.shape)<3:
-#         im = im[:,:,np.newaxis]
-#     sr,sc,ch = im.shape    
-    
-#     pad_r,pad_c = get_padding(im)
-    
-#     im = pad(im,((0,pad_r),(0,pad_c),(0,0)),'reflect')
-#     patches = view_as_windows(im,(size,size,ch),stride)    
-#     patches = patches[:,:,0,:]
-    
-#     sh = list(patches.shape)
-#     sh[1] = sh[0]*sh[1]
-#     sh = np.delete(sh,0)
-#     patches = np.reshape(patches,tuple(sh))
-    
-#     R = np.arange(im.shape[0])
-#     rv = view_as_windows(R,size,stride) 
-#     rv = rv[:,0]
-#     C = np.arange(im.shape[1])
-#     cv = view_as_windows(C,size,stride) 
-#     cv = cv[:,0]
-#     rr,cc = np.meshgrid(rv,cv)
-#     positions = np.concatenate((rr.ravel()[:,np.newaxis],cc.ravel()[:,np.newaxis]),axis = 1)
-    
-    
-#     params = {}
-#     params['pad_r'] = pad_r
-#     params['pad_c'] = pad_c
-#     params['im_size'] = im.shape[:2]
-#     params['positions'] = positions
-    
-#     return patches,params
-
-# def stitch_tiles(patches,params):
-#     pad_r = params['pad_r']
-#     pad_c = params['pad_c']
-#     im_size = params['im_size']
-#     positions = params['positions']
-#     size = patches.shape[1]
-    
-#     result = np.zeros((im_size[0],im_size[1],patches.shape[-1]))
-#     normalization = np.zeros_like(result)*1.0
-#     norm_patch = np.ones_like(patches)
-    
-#     for i,pos in enumerate(positions):
-#         cc,rr = pos[0],pos[1]
-#         result[rr:rr+size,cc:cc+size] += patches[i]
-#         normalization[rr:rr+size,cc:cc+size] += norm_patch[i]
-#     normalization[normalization==0] = 0.0001
-#     result = result/normalization
-#     if pad_r>0:
-#         result = result[:-pad_r,:]
-#     if pad_c>0:
-#         result = result[:,:-pad_c]
-#     return result
