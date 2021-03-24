@@ -1,4 +1,5 @@
 import numpy as np
+from skimage.util import view_as_windows
 
 def normalize2max(im):
     im = im-np.min(im)
@@ -10,7 +11,11 @@ def getPatch(im,sz):
     cc = np.random.randint(sc-sz)
     return im[rr:rr+sz,cc:cc+sz],rr,cc
 
-def extract_tiles(im,size = 256,exclude = 16):
+
+from skimage.util import view_as_windows
+def extract_tiles(im,size = 512,exclude = 12):
+    
+    size = size-2*exclude
 
     if len(im.shape)<3:
         im = im[:,:,np.newaxis]
@@ -21,10 +26,13 @@ def extract_tiles(im,size = 256,exclude = 16):
     im1 = np.pad(im,((0,pad_row),(0,pad_col),(0,0)),mode = 'reflect')
     sr1,sc2,_ = im1.shape
     
-    rv = view_as_windows(np.arange(0,im1.shape[0]),size,size)
-    cv = view_as_windows(np.arange(0,im1.shape[1]),size,size)
-    rv = rv[:,0]
-    cv = cv[:,0]
+#     rv = view_as_windows(np.arange(0,im1.shape[0]),size,size)
+#     cv = view_as_windows(np.arange(0,im1.shape[1]),size,size)
+#     rv = rv[:,0]
+#     cv = cv[:,0]
+
+    rv = np.arange(0,im1.shape[0],size)
+    cv = np.arange(0,im1.shape[1],size)
     cc,rr = np.meshgrid(cv,rv)
     positions = np.concatenate((rr.ravel()[:,np.newaxis],cc.ravel()[:,np.newaxis]),axis = 1)
         
@@ -43,7 +51,7 @@ def extract_tiles(im,size = 256,exclude = 16):
     params['im_size'] = [sr1,sc2]
     params['positions'] = positions
     
-    patches = view_as_windows(im1,(size+2*d,size+2*d,ch),size)    
+    patches = view_as_windows(im1,(size+2*exclude,size+2*exclude,ch),size)    
     patches = patches[:,:,0,:,:,:]
     patches = np.reshape(patches,(-1,patches.shape[2],patches.shape[3],patches.shape[4]))
     return patches,params
