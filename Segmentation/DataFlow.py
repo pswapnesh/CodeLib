@@ -24,24 +24,27 @@ def plotter(images,cmap = 'jet',size = (15,15)):
 
 class DataLoader():
 
-    def __init__(self,x_list,y_list,test_size = 0.2 ,preprocess_x = lambda x:x,preprocess_y = lambda x:x):
+    def __init__(self,x_list,y_list,test_size = 0.2 ,preprocess = lambda x,y:(x,y)):
         seed = 42
         self.x_list = x_list
         self.y_list = y_list            
         self.test_size = test_size
-        self.preprocess_x = preprocess_x
-        self.preprocess_y = preprocess_y
+        self.preprocess = preprocess        
         print("length of x,y: ", len(x_list),',',len(x_list))
-        
-        try:
-            xx = imread(self.x_list[0])
+        xx = imread(self.x_list[0])
+        yy = imread(self.y_list[0])
+        xx,yy = self.preprocess(xx,yy)
+        if len(xx.shape)==2:
+            self.channels = 1
+            self.rows,self.cols = xx.shape
+        else:
             self.rows,self.cols,self.channels = xx.shape
-            yy = imread(self.y_list[0])
+        if len(yy.shape)==2:
+            self.classes = 1
+        else:
             _,_,self.classes = yy.shape
-            print(xx.shape,yy.shape)
-
-        except:
-            print('check data format first.. ')
+        
+        print(self.rows,self.cols,self.channels,self.classes)
 
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.x_list, self.y_list, test_size=self.test_size, random_state=seed)
 
@@ -54,17 +57,15 @@ class DataLoader():
         ii = np.random.randint(len(self.X_train))
         xx = imread(self.X_train[ii])
         yy = imread(self.y_train[ii])
-        xx = self.preprocess_x(xx)
-        yy = self.preprocess_y(yy)
+        xx,yy = self.preprocess(xx,yy)        
         yield xx,yy
 
     def test_generator(self):
         """ generator that generates one test record of X and y randomly from the file lists"""
-        ii = np.random.randint()
+        ii = np.random.randint(len(self.X_test))
         xx = imread(self.X_test[ii])
         yy = imread(self.y_test[ii])
-        xx = self.preprocess_x(xx)
-        yy = self.preprocess_y(yy)
+        xx,yy = self.preprocess(xx,yy)  
         yield xx,yy
 
     def get_tf_dataset(self,dset = 'train' ,BATCH_SIZE=16):
@@ -101,4 +102,3 @@ class DisplayCallback(tf.keras.callbacks.Callback):
             ax[2].imshow(yp[0,:,:,0])   
             plt.axis('off')
             plt.show()
-        
