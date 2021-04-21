@@ -27,3 +27,6 @@ def pixel_weighted_cross_entropy(targets,weights, predictions):
 
 def bce_and_jac(y_true,y_pred):
     return tf.keras.losses.binary_crossentropy(y_true,y_pred)-K.log(jaccard_coef(y_true,y_pred))    
+
+
+#### object wise jaccard    
