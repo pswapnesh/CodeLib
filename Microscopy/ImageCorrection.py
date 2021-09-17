@@ -4,7 +4,7 @@ from skimage.filters import gaussian
 def background_estimation(image,sigma = 20,grid_separation = 10,offset = 10,n_regressors = 1):
     image = gaussian(image,sigma)
     me = np.mean(image)
-    iamge = image-me
+    image = image-me
     sr,sc = image.shape
     
     rr,cc = np.meshgrid(np.arange(offset,sr-offset,grid_separation),np.arange(offset,sc-offset,grid_separation))    
