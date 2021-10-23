@@ -23,7 +23,7 @@ unet.model.fit(dl.training_dataset,epochs=10,steps_per_epoch=5,callbacks=[disp])
 import os 
 #os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import numpy as np
-from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, Dropout, Cropping2D,Reshape,concatenate,Conv2DTranspose,UpSampling2D,Multiply,Lambda,BatchNormalization
+from tensorflow.keras.layers import Activation,Input, Conv2D, MaxPooling2D, UpSampling2D, Dropout, Cropping2D,Reshape,concatenate,Conv2DTranspose,UpSampling2D,Multiply,Lambda,BatchNormalization
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import ModelCheckpoint, LearningRateScheduler, TensorBoard,EarlyStopping
 from tensorflow.keras.optimizers import Adam,Adagrad,Adadelta
