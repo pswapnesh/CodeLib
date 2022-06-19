@@ -1,6 +1,45 @@
 import tensorflow as tf
 import tensorflow.keras as tfk
 
+class ConvBlock(tf.keras.layers.Layer):
+    '''
+    Attention is not what you need
+    '''
+    def __init__(self, k, filter_size, kernel_initializer = 'he_normal',kernel_regularizer = None, name='attention_block', **kwargs):
+        super(ConvBlock, self).__init__(name=name)
+        self.k = k # k filters 
+        self.filter_size = filter_size
+        self.kernel_initializer = kernel_initializer
+        self.kernel_regularizer = kernel_regularizer        
+        
+        self.conv2_a = tfk.layers.Conv2D(self.k, (self.filter_size, self.filter_size), padding='same', kernel_initializer=self.kernel_initializer ,kernel_regularizer=self.kernel_regularizer )
+        self.bn_a = tfk.layers.BatchNormalization()
+        self.do_a = tfk.layers.Dropout(0.5)
+        self.act_a = tfk.layers.Activation('swish')
+        
+        self.conv2_b = tfk.layers.Conv2D(self.k, (self.filter_size, self.filter_size), padding='same', kernel_initializer=self.kernel_initializer ,kernel_regularizer=self.kernel_regularizer ) 
+        
+        super(ConvBlock, self).__init__(**kwargs)
+
+    def get_config(self):
+        config = super(ConvBlock, self).get_config()
+        config.update({"k": self.k})
+        config.update({"filter_size": self.filter_size})
+        config.update({"kernel_regularizer": self.kernel_regularizer})
+        config.update({"kernel_initializer": self.kernel_initializer})
+        return config
+
+    def call(self, x):
+        conv = self.conv2_a(x)
+        conv = self.bn_a(conv)
+        conv = self.do_a(conv)
+        conv = self.act_a(conv)
+        
+        conv = self.conv2_b(conv)
+        conv = tfk.layers.BatchNormalization()(conv)
+        conv = tfk.layers.Activation('swish')(conv)
+        return conv
+    
 class ResidualBlock(tf.keras.layers.Layer):
     '''
     '''
