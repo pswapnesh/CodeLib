@@ -153,7 +153,7 @@ class Tracker:
     def clean_null(self):        
         idx = self.tracks['track_ids'].isnull()
         self.tracks.loc[idx,'track_ids'] = [self.previous_max + i + 1 for i in range(len(np.where(idx)[0]))]
-        self.previous_max = np.max(self.tracks['track_ids'].values)
+        #self.previous_max = np.max(self.tracks['track_ids'].values)
 
     
 
@@ -190,8 +190,9 @@ class Tracker:
             self.uids1 = np.unique(self.labeled1)[1:]
 
             self.tracks = pd.concat((self.tracks,tmp_tracks))
-            #self.clean_null()
+        self.clean_null()
         print('total tracks detected: ', np.max(self.tracks['track_ids']))
 
     def save(self,fname):
-        self.tracks.to_csv(fname)
+        self.tracks['track_ids'] = self.tracks['track_ids'].values.astype(int)
+        self.tracks.to_csv(fname,index = None)
