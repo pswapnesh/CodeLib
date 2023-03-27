@@ -33,6 +33,7 @@ def label_reader(ii):
 
 tr = Tracker(flist,label_reader=label_reader)
 tr.start()
+tr.save('outputs/tracks.csv')
 """
 
 def read_labeled_image(f):
@@ -127,7 +128,7 @@ class Tracker:
     tracks (pandas DataFrame): DataFrame containing track information.
     previous_max (int): Maximum label used so far for tracks.
     """
-    def __init__(self,flist,label_reader ):
+    def __init__(self,flist,label_reader):
         self.flist = flist
         self.label_reader = label_reader
         ii = 0
@@ -154,7 +155,9 @@ class Tracker:
         self.tracks.loc[idx,'track_ids'] = [self.previous_max + i + 1 for i in range(len(np.where(idx)[0]))]
         self.previous_max = np.max(self.tracks['track_ids'].values)
 
-    def start(self,dt = 1):
+    
+
+    def start(self,dt = 1,max_distance = 15):
         for ii in tqdm(range(dt,len(self.flist),dt)):
             #labeled2 = read_labeled_image(self.flist[ii])
             labeled2 = self.label_reader(ii)
@@ -167,19 +170,27 @@ class Tracker:
             idx = self.tracks['t']== ii-dt
             
             #tmp_tracks.loc[row_ids,'track_ids'] = tracks.loc[idx,:].loc[col_ids,'original_labels']
-            for r,c in zip(row_ids,col_ids):
+            for r,c in zip(row_ids,col_ids):                   
                 if c >= len(self.uids1):
                     tmp_tracks.loc[r,'track_ids'] = self.previous_max
-                    self.previous_max+=1            
+                    self.previous_max+=1       
                 else:
-                    tmp_tracks.loc[r,'track_ids'] = self.tracks.loc[idx,:].loc[c,'track_ids']
+                    dx = (tmp_tracks.loc[r,'x'] - self.tracks.loc[idx,:].loc[c,'x'])**2 
+                    dy = (tmp_tracks.loc[r,'y'] - self.tracks.loc[idx,:].loc[c,'y'])**2 
+                    d = np.sqrt(dx+dy)
+                    if d > max_distance:
+                        tmp_tracks.loc[r,'track_ids'] = self.previous_max
+                        self.previous_max+=1    
+                    else:
+                        tmp_tracks.loc[r,'track_ids'] = self.tracks.loc[idx,:].loc[c,'track_ids']
+                
                     #assigned += [tracks.loc[idx,:].loc[c,'original_labels'].value]
             
             self.labeled1 = np.copy(labeled2)
             self.uids1 = np.unique(self.labeled1)[1:]
 
             self.tracks = pd.concat((self.tracks,tmp_tracks))
-            self.clean_null()
+            #self.clean_null()
         print('total tracks detected: ', np.max(self.tracks['track_ids']))
 
     def save(self,fname):
