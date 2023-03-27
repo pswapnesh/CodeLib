@@ -139,7 +139,7 @@ class Tracker:
         self.tracks = self.temp_track(self.labeled1,0)
         self.tracks['track_ids'] = self.tracks['original_labels']
         
-        self.previous_max = np.max(self.tracks['track_ids'].values)
+        self.previous_max = np.max(self.tracks['track_ids'].values) +1 
 
     def temp_track(self,labeled,tt):
         properties = pd.DataFrame(regionprops_table(labeled,properties = ['centroid','label']))
