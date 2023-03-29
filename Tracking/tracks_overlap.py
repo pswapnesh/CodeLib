@@ -17,182 +17,188 @@ from skimage.color import label2rgb
 from tqdm import tqdm
 from sklearn.metrics import pairwise_distances
 from IPython.display import clear_output
+from joblib import Parallel, delayed
+
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import min_weight_full_bipartite_matching
+from scipy.sparse.csgraph import maximum_bipartite_matching
+
 
 # Example usage
 """
 from glob import glob
-from tracks_overlap import *
+from tracks_overlap_parallel import *
+from skimage.segmentation import clear_border
+from skimage.morphology import remove_small_objects
 
-folder = "../inputs/segmented_cropped_ws/"
-flist = sorted(glob(folder + '*.tif'))
+folder = "../inputs/images_pour_swap/"
+N = 30
+flist = [folder + str(i) + '.tif' for i in range(1,N+1)]
+#flist = sorted(glob(folder + '*.tif'))[:10]
 def label_reader(ii):
-    yy = imread(flist[ii])/255.0    
-    yy = remove_small_objects(yy>0.9,256)
-    labeled1 = label(yy)
+    labeled1 = imread(flist[ii]).astype(int) 
+    labeled1 = remove_small_objects(labeled1,256)
     return labeled1
 
-tr = Tracker(flist,label_reader=label_reader)
+tr = Tracker(flist,label_reader=label_reader,n_jobs=4)
+tr.min_overlap_percentage = 5/100 # 5 percent
 tr.start()
-tr.save('outputs/tracks.csv')
+tr.save('test.csv')
+tr.tracks.head()
+
 """
 
-def read_labeled_image(f):
-    """
-    Reads an image file from the given file path and returns the labeled image.
-
-    Parameters:
-    f (str): File path of the input image.
-
-    Returns:
-    labeled1 (numpy.ndarray): Labeled image.
-    """
-    yy = imread(f)/255.0    
-    yy = remove_small_objects(yy>0.9,256)
-    labeled1 = label(yy)
-    return labeled1
-
-def relabel(labeled_image,oldlabels,newlabels):
-    """
-    Given a labeled image, relabels the image with new label values, based on the old labels and new labels.
-
-    Parameters:
-    labeled_image (numpy.ndarray): Labeled image.
-    oldlabels (list): List of old label values.
-    newlabels (list): List of new label values corresponding to old label values.
-
-    Returns:
-    newimage (numpy.ndarray): Relabeled image.
-    """
-    newimage = np.zeros_like(labeled_image)
-    for old_label,new_label in zip(oldlabels,newlabels):
-        newimage[labeled_image==old_label] = new_label
-    return newimage
-
-def get_max_label(p):
-    """
-    Given a regionprops object, returns the maximum intensity value and its corresponding label value in the region.
-
-    Parameters:
-    p (skimage.measure._regionprops.RegionProperties): Regionprops object.
-
-    Returns:
-    uids (numpy.ndarray): Array of label values.
-    hist (list): List of intensity values corresponding to the label values.
-    """    
-    tmp = p.intensity_image[p.image]
+def overlap_histogram(region,intensity):
+    threshold = 0.02
+    tmp = intensity[region]
     uids = np.unique(tmp)          
-    hist = [np.sum((tmp==u)*1.0) for u in uids]    
-    return uids,hist
+    s = np.sum(region*1.0)
+    hist = np.array([np.sum((tmp==u)*1.0)/s for u in uids])
+    if (len(uids)>1) & (uids[0] ==0):
+        uids = uids[1:]
+        hist = hist[1:]
+        
+        # idx = np.argmax(hist)
+        # uids = [uids[idx]]
+        # hist = [hist[idx]]
+    if np.max(hist) < threshold:
+        return [0],[1.0]
+    return uids,hist   
 
-def overlap_method(labeled1,labeled2):
-    """
-    Given two labeled images, returns a cost matrix that indicates the cost of assigning each region in labeled2 to each region in labeled1.
 
-    Parameters:
-    labeled1 (numpy.ndarray): Labeled image 1.
-    labeled2 (numpy.ndarray): Labeled image 2.
 
-    Returns:
-    cost_matrix (numpy.ndarray): Cost matrix.
-    """
-    uids1 = np.unique(labeled1)[1:]
-    overlap = np.logical_and(labeled1 >0,labeled2 >0)
-    overlap = (overlap*1.0)*labeled1
-    props = regionprops(labeled2,intensity_image = overlap)
-    cost_matrix = np.zeros((len(props),len(uids1)))
-    for i in range(len(props)):
-        labels,histo = get_max_label(props[i]) 
-        if (len(labels) == 1 ) and (labels[0] == 0):
-            cost_matrix = np.concatenate((cost_matrix,np.zeros_like(cost_matrix[:,0:1])),axis = 1)
-            cost_matrix[i,-1] = histo[0]
-            continue    
-        for j,h in zip(labels[1:],histo[1:]):            
-            j = int(j-1)
-            cost_matrix[i,j] = h
-    return cost_matrix
+def compute_overlap_cost(props1,props2):
+    
+    labels1 = props1['label'].values
+    labels2 = props2['label'].values
+    has_overlaps = [False if (len(l)==1) & (l[0]==0) else True for i,(l,h) in enumerate(props2['overlap'])]
 
+    has_overlaps_indices = np.where(has_overlaps)[0]
+    cost_matrix = np.zeros((len(has_overlaps_indices),len(labels1)))-np.log(0.01)
+    for i,(l,h) in enumerate(props2.loc[has_overlaps_indices,'overlap'].values):
+        for l1,h1 in zip(l,h):
+            idx = np.where(labels1==l1)[0]
+            cost_matrix[i,idx] = -np.log(h1)
+    #cost_matrix = cost_matrix- np.min(cost_matrix)         
+    return cost_matrix,has_overlaps
+
+# def compute_overlap_cost(props1,props2):
+    
+#     labels1 = props1['label'].values
+#     labels2 = props2['label'].values
+#     #has_overlaps = [False if (len(l)==1) & (l[0]==0) else True for i,(l,h) in enumerate(props2['overlap'])]
+#     has_overlaps = [False if (l[0]==0) else True for i,(l,h) in enumerate(props2['overlap'].values)]
+#     has_overlaps_indices = np.where(has_overlaps)[0]
+#     cost_matrix = np.zeros((len(props1),len(has_overlaps_indices)))
+
+#     for i,(l,h) in enumerate(props2.loc[has_overlaps_indices,'overlap'].values):
+#         for l1,h1 in zip(l,h):
+#             idx = np.where(labels1==l1)[0]
+#             cost_matrix[idx,i] = h1
+#     cost_matrix = np.exp(-cost_matrix/2)
+#     return cost_matrix,has_overlaps
+
+
+
+def make_tracks(dfs):
+    previous_max_id = np.max(dfs[0]['track_id'])
+
+    for i in tqdm(range(1,len(dfs))):
+        no_track_ids = dfs[i]['track_id'].values.astype(int) ==-1
+        unassigned_ids = np.where(no_track_ids)[0]
+        assigned_ids= np.where(np.logical_not(no_track_ids))[0]
+
+        tids = dfs[i].loc[assigned_ids,'track_id'].values.astype(int)
+        oids = dfs[i-1]['label'].values.astype(int)
+        ids = np.array([np.where(oids == tid)[0] for tid in tids])
+        ids = np.squeeze(ids)
+
+        
+        trackids = dfs[i-1].loc[ids,'track_id'].values.astype(int)
+
+        dfs[i].loc[assigned_ids,'track_id'] = trackids
+
+        if len(unassigned_ids) > 0:            
+            tmp = np.array([previous_max_id + j + 1 for j in range(len(unassigned_ids))])
+            dfs[i].loc[unassigned_ids,'track_id'] = tmp
+        previous_max_id = max(previous_max_id,np.max(dfs[i]['track_id']))
+    return dfs
 
 class Tracker:
-    """
-    Initializes the Tracker object.
-
-    Parameters:
-    flist (list): List of file paths.
-    label_reader (function): Function for reading labeled images.
-
-    Attributes:
-    flist (list): List of file paths.
-    label_reader (function): Function for reading labeled images.
-    labeled1 (numpy array): Labeled image of the first frame.
-    uids1 (list): List of unique labels in labeled1.
-    tracks (pandas DataFrame): DataFrame containing track information.
-    previous_max (int): Maximum label used so far for tracks.
-    """
-    def __init__(self,flist,label_reader):
+    def __init__(self,flist,label_reader,n_jobs = 4):
         self.flist = flist
+        self.n_jobs = n_jobs
         self.label_reader = label_reader
-        ii = 0
-        #self.labeled1 = read_labeled_image(self.flist[ii])
-        self.labeled1 = self.label_reader(ii)
-        self.uids1 = np.unique(self.labeled1)[1:]
+        self.min_overlap_percentage = 5/100
 
-        self.tracks = self.temp_track(self.labeled1,0)
-        self.tracks['track_ids'] = self.tracks['original_labels']
+    def compute_overlaps(self,t):
+        l1 = self.label_reader(t-1)
+        l2 = self.label_reader(t)
+        properties = pd.DataFrame(regionprops_table(l2,intensity_image = l1,properties=['label','centroid'],extra_properties = (overlap_histogram,)))
         
-        self.previous_max = np.max(self.tracks['track_ids'].values) +1 
-
-    def temp_track(self,labeled,tt):
-        properties = pd.DataFrame(regionprops_table(labeled,properties = ['centroid','label']))
-        tmp_tracks = pd.DataFrame(columns = ['t','y','x','original_labels','track_ids'])
+        tmp_tracks = pd.DataFrame(columns = ['t','y','x','label'])
         tmp_tracks['y'] = properties['centroid-0']
         tmp_tracks['x'] = properties['centroid-1']
-        tmp_tracks['original_labels'] = properties['label']
-        tmp_tracks['t'] = tt
+        tmp_tracks['overlap'] = properties['overlap_histogram']
+        tmp_tracks['label'] = properties['label'].values.astype(int)
+        tmp_tracks['t'] = t
+        tmp_tracks['distances'] = 11000
+        tmp_tracks['track_id'] = -1
+        
         return tmp_tracks
 
-    def clean_null(self):        
-        idx = self.tracks['track_ids'].isnull()
-        self.tracks.loc[idx,'track_ids'] = [self.previous_max + i + 1 for i in range(len(np.where(idx)[0]))]
-        #self.previous_max = np.max(self.tracks['track_ids'].values)
+    def link_frames(self,df0,df1):
 
-    
+        cost,has_overlaps = compute_overlap_cost(df0,df1)
+        has_overlaps_indices = np.where(has_overlaps)[0]
+        
+        
+        row_ids,col_ids = lsa(cost,maximize = False)
+        each_cost = cost[row_ids,col_ids]
+        idx = np.where(each_cost < -np.log(self.min_overlap_percentage))[0]
+        df1.loc[has_overlaps_indices[row_ids[idx]],'track_id'] = df0.loc[col_ids[idx],'label'].values.astype(int)
 
-    def start(self,dt = 1,max_distance = 15):
-        for ii in tqdm(range(dt,len(self.flist),dt)):
-            #labeled2 = read_labeled_image(self.flist[ii])
-            labeled2 = self.label_reader(ii)
-            uids2 = np.unique(labeled2)[1:]
+        x1 = df1.loc[has_overlaps_indices[row_ids],'x']
+        y1 = df1.loc[has_overlaps_indices[row_ids],'y']
 
-            tmp_tracks = self.temp_track(labeled2,ii)
+        x0 = df0.loc[col_ids,'x']
+        y0 = df0.loc[col_ids,'y']
 
-            cost_matrix = overlap_method(self.labeled1,labeled2)
-            row_ids,col_ids = lsa(cost_matrix,maximize = True)
-            idx = self.tracks['t']== ii-dt
-            
-            #tmp_tracks.loc[row_ids,'track_ids'] = tracks.loc[idx,:].loc[col_ids,'original_labels']
-            for r,c in zip(row_ids,col_ids):                   
-                if c >= len(self.uids1):
-                    tmp_tracks.loc[r,'track_ids'] = self.previous_max
-                    self.previous_max+=1       
-                else:
-                    dx = (tmp_tracks.loc[r,'x'] - self.tracks.loc[idx,:].loc[c,'x'])**2 
-                    dy = (tmp_tracks.loc[r,'y'] - self.tracks.loc[idx,:].loc[c,'y'])**2 
-                    d = np.sqrt(dx+dy)
-                    if d > max_distance:
-                        tmp_tracks.loc[r,'track_ids'] = self.previous_max
-                        self.previous_max+=1    
-                    else:
-                        tmp_tracks.loc[r,'track_ids'] = self.tracks.loc[idx,:].loc[c,'track_ids']
-                
-                    #assigned += [tracks.loc[idx,:].loc[c,'original_labels'].value]
-            
-            self.labeled1 = np.copy(labeled2)
-            self.uids1 = np.unique(self.labeled1)[1:]
+        distances = np.sqrt((x1-x0)**2 + (y1-y0)**2)
+        
 
-            self.tracks = pd.concat((self.tracks,tmp_tracks))
-        self.clean_null()
-        print('total tracks detected: ', np.max(self.tracks['track_ids']))
+        df1.loc[has_overlaps_indices[row_ids],'distances'] = distances
+
+        return df1
+
+    def start(self):
+        # first frame
+        l1 = self.label_reader(0)
+        properties = pd.DataFrame(regionprops_table(l1,intensity_image = l1,properties=['label','centroid'],extra_properties = (overlap_histogram,)))
+        df0 = pd.DataFrame(columns = ['t','y','x','label'])
+        df0['y'] = properties['centroid-0']
+        df0['x'] = properties['centroid-1']
+        df0['label'] = properties['label'].values.astype(int)
+        df0['overlap'] = properties['overlap_histogram']
+        df0['distances'] = 0
+        df0['t'] = 0
+        df0['track_id'] = df0['label'] 
+
+        print('computing overlaps ...')
+        dfs = Parallel(n_jobs=self.n_jobs)(delayed(self.compute_overlaps)(t) for t in tqdm(range(1,len(self.flist))))
+        #dfs = [self.compute_overlaps(t) for t in tqdm(range(1,len(self.flist)))]
+        dfs = [df0] + dfs
+
+        print('linking frames ...')
+        dfs = Parallel(n_jobs=self.n_jobs)(delayed(self.link_frames)(dfs[i],dfs[i+1].copy()) for i in tqdm(range(len(dfs)-1)))
+        dfs = [df0] + dfs
+
+        print('making tracks ...')
+        dfs = make_tracks(dfs)
+        self.tracks = pd.concat(dfs)
+        return self.tracks
+
 
     def save(self,fname):
-        self.tracks['track_ids'] = self.tracks['track_ids'].values.astype(int)
+        self.tracks['track_id'] = self.tracks['track_id'].values.astype(int)
         self.tracks.to_csv(fname,index = None)
