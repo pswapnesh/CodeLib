@@ -28,18 +28,22 @@ from skimage.morphology import skeletonize
 """
 from glob import glob
 from tracks_overlap import *
+from skimage.segmentation import clear_border
+from skimage.morphology import remove_small_objects
 
-folder = "../inputs/segmented_cropped_ws/"
-flist = sorted(glob(folder + '*.tif'))
+folder = "../inputs/images_pour_swap/"
+N = 30
+flist = [folder + str(i) + '.tif' for i in range(1,N+1)]
+#flist = sorted(glob(folder + '*.tif'))[:10]
 def label_reader(ii):
-    yy = imread(flist[ii])/255.0    
-    yy = remove_small_objects(yy>0.9,256)
-    labeled1 = label(yy)
+    labeled1 = imread(flist[ii]).astype(int) 
+    labeled1 = remove_small_objects(labeled1,256)
     return labeled1
 
-tr = Tracker(flist,label_reader=label_reader)
+tr = Tracker(flist,label_reader=label_reader,n_jobs=4)
 tr.start()
-tr.save('outputs/tracks.csv')
+tr.save('test.csv')
+tr.tracks.head()
 """
 def center_of_mass(region,intensity):
     skel = skeletonize(region)
