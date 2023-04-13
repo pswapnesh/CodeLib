@@ -23,11 +23,12 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import min_weight_full_bipartite_matching
 from scipy.sparse.csgraph import maximum_bipartite_matching
 from skimage.morphology import skeletonize
+from skimage.filters import gaussian
 
 # Example usage
 """
 from glob import glob
-from tracks_overlap import *
+from tracks_overlap_parallel import *
 from skimage.segmentation import clear_border
 from skimage.morphology import remove_small_objects
 
@@ -40,7 +41,7 @@ def label_reader(ii):
     labeled1 = remove_small_objects(labeled1,256)
     return labeled1
 
-tr = Tracker(flist,label_reader=label_reader,n_jobs=4)
+tr = Tracker(flist,label_reader=label_reader,property_names = ['area'],min_overlap_percentage = 5/100,distance_threshold = 100,n_jobs=4)
 tr.start()
 tr.save('test.csv')
 tr.tracks.head()
@@ -74,6 +75,7 @@ def overlap_histogram(region,intensity):
 
 
 def compute_overlap_cost(props1,props2):
+    
     
     labels1 = props1['label'].values
     labels2 = props2['label'].values
@@ -115,25 +117,26 @@ def make_tracks(dfs):
     return dfs
 
 class Tracker:
-    def __init__(self,flist,label_reader,n_jobs = 4):
+    def __init__(self,flist,label_reader,property_names,min_overlap_percentage = 5/100,distance_threshold = 50,n_jobs = 4):
         self.flist = flist
+        self.property_names = ['label','bbox'] + property_names
         self.n_jobs = n_jobs
         self.label_reader = label_reader
-        self.min_overlap_percentage = 5/100
+        self.min_overlap_percentage = min_overlap_percentage
+        self.distance_threshold = distance_threshold**2
 
     def compute_overlaps(self,t):
         l1 = self.label_reader(t-1)
         l2 = self.label_reader(t)
         #properties = pd.DataFrame(regionprops_table(l2,intensity_image = l1,properties=['label','centroid'],extra_properties = (overlap_histogram,)))
-        properties = pd.DataFrame(regionprops_table(l2,intensity_image = l1,properties=['label','bbox'],extra_properties = (center_of_mass,overlap_histogram)))
+        properties = pd.DataFrame(regionprops_table(l2,intensity_image = l1,properties= self.property_names ,extra_properties = (center_of_mass,overlap_histogram)))
         
         properties['center_of_mass-0'] += properties['bbox-0']
         properties['center_of_mass-1'] += properties['bbox-1']
+
+        properties.rename(columns={"center_of_mass-0": "y", "center_of_mass-1": "x", "overlap_histogram": "overlap"}, inplace=True)
         
-        tmp_tracks = pd.DataFrame(columns = ['t','y','x','label'])
-        tmp_tracks['y'] = properties['center_of_mass-0']
-        tmp_tracks['x'] = properties['center_of_mass-1']
-        tmp_tracks['overlap'] = properties['overlap_histogram']
+        tmp_tracks = properties.copy()
         tmp_tracks['label'] = properties['label'].values.astype(int)
         tmp_tracks['t'] = t
         tmp_tracks['distances'] = 11000
@@ -143,14 +146,15 @@ class Tracker:
 
     def link_frames(self,df0,df1):
 
-        cost,has_overlaps = compute_overlap_cost(df0,df1)
+        cost,has_overlaps = compute_overlap_cost(df0,df1)        
         has_overlaps_indices = np.where(has_overlaps)[0]
         
         
         row_ids,col_ids = lsa(cost,maximize = False)
         each_cost = cost[row_ids,col_ids]
-        idx = np.where(each_cost < -np.log(self.min_overlap_percentage))[0]
+        idx = np.where(each_cost < -np.log(self.min_overlap_percentage))[0]      
         df1.loc[has_overlaps_indices[row_ids[idx]],'track_id'] = df0.loc[col_ids[idx],'label'].values.astype(int)
+  
 
         x1 = df1.loc[has_overlaps_indices[row_ids],'x']
         y1 = df1.loc[has_overlaps_indices[row_ids],'y']
@@ -163,24 +167,26 @@ class Tracker:
 
         df1.loc[has_overlaps_indices[row_ids],'distances'] = distances
 
+        idx_distances = np.where(df1['distances'] > self.distance_threshold)[0]
+        df1.loc[idx_distances,'track_id'] = -1
+
+
         return df1
 
     def start(self):
         # first frame
         l1 = self.label_reader(0)
-        properties = pd.DataFrame(regionprops_table(l1,intensity_image = l1,properties=['label','bbox'],extra_properties = (center_of_mass,overlap_histogram,)))
+        properties = pd.DataFrame(regionprops_table(l1,intensity_image = l1,properties= self.property_names,extra_properties = (center_of_mass,overlap_histogram,)))
         #print(properties.columns)
         properties['center_of_mass-0'] += properties['bbox-0']
         properties['center_of_mass-1'] += properties['bbox-1']
 
-
-        df0 = pd.DataFrame(columns = ['t','y','x','label'])
-        df0['y'] = properties['center_of_mass-0']
-        df0['x'] = properties['center_of_mass-1']
-        df0['label'] = properties['label'].values.astype(int)
-        df0['overlap'] = properties['overlap_histogram']
-        df0['distances'] = 0
+        properties.rename(columns={"center_of_mass-0": "y", "center_of_mass-1": "x", "overlap_histogram": "overlap"}, inplace=True)
+        
+        df0 = properties.copy()
+        df0['label'] = df0['label'].values.astype(int)
         df0['t'] = 0
+        df0['distances'] = 11000
         df0['track_id'] = df0['label'] 
 
         print('computing overlaps ...')
@@ -193,11 +199,42 @@ class Tracker:
         dfs = [df0] + dfs
 
         print('making tracks ...')
-        dfs = make_tracks(dfs)
+        dfs = make_tracks(dfs)        
         self.tracks = pd.concat(dfs)
+
+        print('computing tracks properties...')
+        self.make_velocities()
         return self.tracks
 
 
     def save(self,fname):
         self.tracks['track_id'] = self.tracks['track_id'].values.astype(int)
         self.tracks.to_csv(fname,index = None)
+
+    def make_velocities(self):
+        sigma = 1.5
+        tids = self.tracks['track_id'].unique()
+        
+        self.tracks['vx'] = 0
+        self.tracks['vy'] = 0
+        self.tracks['pRev'] = 0
+        for tid in tqdm(tids):
+            mask = self.tracks['track_id'].values == tid
+            idx = np.where(mask)[0]
+
+            vx = np.diff(self.tracks[mask].x)
+            vy = np.diff(self.tracks[mask].y)
+            vx = gaussian(vx,sigma)
+            vy = gaussian(vy,sigma)
+
+            speed = np.sqrt(vx**2 + vy**2)
+            speed = gaussian(speed,sigma)
+
+            stoppings = np.array([np.max(o) for i,o in self.tracks[mask].overlap.values])
+            stoppings = gaussian(stoppings,1)
+
+            stoppings = np.exp(-0.5e19 * speed/stoppings[1:])
+
+            self.tracks.loc[mask,'vx'] = np.concatenate(([0],vx))
+            self.tracks.loc[mask,'vy'] = np.concatenate(([0],vy))            
+            self.tracks.loc[mask,'pRev'] = np.concatenate(([0],stoppings))
